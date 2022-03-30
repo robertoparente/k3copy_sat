@@ -130,19 +130,17 @@ def dictionary_add(dic,var):
 		dic[var]=l+1
 
 from sage.sat.solvers.dimacs import DIMACS
-
+# Starting the code. We use DIMACS: https://doc.sagemath.org/html/en/reference/sat/sage/sat/solvers/dimacs.html
+ 
 def SAT1(G,colors,file):
 	n=G.order()
-
 	vertices = G.vertices()
 	edges = G.edges()
 	clauses=[]
-	
 	var_dic={}
-
 	solver = DIMACS()
 	
-#	Equações de cor - cada aresta recebe uma cor
+#	Color equations: Every edges receives a color
 	for e in edges:
 		nClause = list()
 		for i in range(colors):
@@ -151,18 +149,17 @@ def SAT1(G,colors,file):
 			nClause.append(var_dic[new_string])
 		solver.add_clause(nClause)
 	
-#	Equações de grau - o grau de cada cor tem que ser no máximo 1
-#	Equações estão na CNF: Para cada cor i, temos "¬x_e,i OR (x_e,i and x_f1,i and ... and x_fj,i)", onde fj arestas na vizinhança da arestas "e".
+	# Degree equations: The color degree is at most 1
+	# The equations must be in the conjunctive normal form (CNF):
+	# For every color i, we have "¬x_e,i OR (x_e,i and x_f1,i and ... and x_fj,i)", where fj denotes edges in the neighborhood of edge "e".
 	for i in range(colors): 
 		for e in edges:
 			eVar = -1*var_dic[edge_variable_to_string(e,i)]
 			for f in edges_incident(G,e):
 				fVar = -1*var_dic[edge_variable_to_string(f,i)]
-				# New Clause = ¬e OR ¬f
-				#nClause = list(eVar,fVar)
 				solver.add_clause((eVar,fVar))
 				
-	# Cada aresta recebe apenas uma cor
+	# Each edge can be only one color
 	for e in edges:
 		for i in range(colors):
 			for j in range(colors):
@@ -170,9 +167,9 @@ def SAT1(G,colors,file):
 					# -x_e_i, or -x_e_j
 					solver.add_clause((-var_dic[edge_variable_to_string(e,i)],-var_dic[edge_variable_to_string(e,j)]))
 
-	# Equação dos triângulos - Parte 01
-	# Primeiro vamos gerar as variáveis Y[u,v,w][a,b,c] que determina as cores a,b,c para o K_3 uvw.
-	# A equação foi convertida em FNC
+	# Triangle equations - Part I
+	# First we create the variables Y[u,v,w][a,b,c] that determine the colors as a,b,c to K_3 uvw.
+	# The equation was converted to conjunctive normal form (CNF)
 	for triple_uvw in Combinations(vertices,3):
 		u,v,w = triple_uvw
 		H=G.subgraph(triple_uvw)
@@ -183,14 +180,14 @@ def SAT1(G,colors,file):
 			new_var=triangle_variable_to_string(triple_uvw,triple_abc)
 			dictionary_add(var_dic,new_var)
 				
-			# Fórmula para definição das variáveis y[x,y,z][a,b,c] = triangulo xyz tem cor abc:
+			# The follow clause for variables definition y[x,y,z][a,b,c] := triangle xyz has color abc:
 			# -y and (-x_e_a or -x_f_b or -x_g_c) and (-x_e_a or -x_g_b or -x_f_c) and (-x_g_a or -x_f_b or -x_e_c)
 			# and (-x_f_a or -x_e_b or -x_g_c) and (-x_f_a or -x_g_b or -x_e_c) and (-x_g_a or -x_e_b or -x_f_c)
 			# OR
 			# y and ((x_e_a and x_f_b and x_g_c) or (x_e_a and x_g_b and x_f_c) or (x_g_a and x_f_b and x_e_c)
 			# or (x_f_a and x_e_b and x_g_c) or (x_f_a and x_g_b and x_e_c) or (x_g_a and x_e_b and x_f_c))
 			#
-			# Convertendo para CNF:
+			# In the CNF:
 			# A = y
 			# B = xea
 			# C = xfb
@@ -222,14 +219,11 @@ def SAT1(G,colors,file):
 			solver.add_clause((-vH, -vI, -vD, vA))
 			solver.add_clause((-vH, -vE, -vJ, vA))
 			solver.add_clause((-vG, -vI, -vF, vA))
-	print("Gerou as equações de triângulo") 
+	print("Makes equations to triangles") 
 
-	# Equação do triângulo - Parte 2
-	# Agora geramos as cláusulas:
-	# para todo a,b,c in CORES; para todo x,y,z in V; para to x',y',z' in V\[x,y,z] temos -y[x,y,z][a,b,c] OR -y[x',y',z'][a,b,c]   
-	# Y = y[x,y,z][a,b,c]
-	# X = y[x',y',z'][a,b,c]
-	# vertex_triples=all_triples(vertices)
+	# Triangle equations - Part II
+	# We make the clauses:
+	# For every a,b,c in COLORS; for every x,y,z in V; for every x',y',z' in V\[x,y,z] we have -y[x,y,z][a,b,c] OR -y[x',y',z'][a,b,c]   
 	for c_triple in Combinations(range(colors),3):
 		for v1_triple in Combinations(G.vertices(),3):
 			H = G.copy()
@@ -239,13 +233,11 @@ def SAT1(G,colors,file):
 				vX = var_dic[triangle_variable_to_string(v2_triple,c_triple)]
 				solver.add_clause((-vY,-vX))
 	
-	print("Gerou clausulas para triangulos disjuntos")			
+	print("Makes clauses for disjoint triangles")			
+	print("Cleaning some symmetries")	
 	
-	print("Removendo simetrias")	
-	
-	# Retirando simetria. forçando n-1 cores nas arestas incidentes ao vértice "0".
-	# Supondo grafo completo e pelo menos n-1 cores
-	# Verificar se essa eliminação funciona. Para indice cromático não ajudava. (verificado até n = 29)
+	# Cleaning the symmetry: Forcing n-1 colors in incident edges to vertex "0".
+	# (Supposing complete graph and at least n-1 colors)
 
 	i=0
 	for f in G.edges_incident(vertices[0]):
@@ -254,49 +246,13 @@ def SAT1(G,colors,file):
 		i = i+1
 		solver.add_clause((fVar))
 
-	# Restrições impostas
-	
-	# print("Impondo padrões")
-	# K_{2k} com {2k-1}
- 	# Deve existir um C_2k com cores 0 e 2k-1 -- Não é verdade para todo k. Ex: k=5 não funciona
- 	# Deve existir um K4 com cores 0,1 e 11
-	# if(not (len(vertices) % 2) and (colors == len(vertices))):
-		# print("Gerando C_2k com cores 0 e 2k-1")
-		# for i in range(len(vertices)-1):
-			# print(i)
-			# if i %2 != 0:
-				# a = colors-2
-			# else:
-				# a = 0
-			# e = [i,i+1]
-			# e.sort()
-			# dictionary_add(var_dic,edge_variable_to_string(e,a))
-			# fVar = list()
-			# fVar.append(var_dic[edge_variable_to_string(e,a)])
-			# print(fVar)
-			# print(edge_variable_to_string(e,a))
-			# solver.add_clause((fVar))
-			
-	# K_12
-	# Impondo arestas e[0,2] e e[1,3] com cor 2 (argumento de diagonal pequena)
-#		e = [0,2]
-#		dictionary_add(var_dic,edge_variable_to_string(e,2))
-#		fVar = list()
-#		fVar.append(var_dic[edge_variable_to_string(e,2)])
-#		solver.add_clause((fVar))
-#		e = [1,3]
-#		dictionary_add(var_dic,edge_variable_to_string(e,2))
-#		fVar = list()
-#		fVar.append(var_dic[edge_variable_to_string(e,2)])
-#		solver.add_clause((fVar))
-				
-	# imprimindo DIMACS para arquivo "file"
-	print("Imprimindo arquivo DIMACS")
+	# Writing DIMACS to file "file"
+	print("Writing DIMACS file")
 	solver.clauses(file)
 
-	# Escrevendo dicionario
-	print("Escrevendo dicionário")
-	file_dicionario = open(file+"_dicionario",'w')
+	# Writing dictionary
+	print("Writing dictionary")
+	file_dicionario = open(file+"_DICTIONARY",'w')
  
 	for chave in var_dic:
 		file_dicionario.write(chave+" : "+str(var_dic[chave])+"\n")		
